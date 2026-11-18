@@ -260,7 +260,6 @@ wchar_t Glyph(DeviceKind k, bool bluetooth) {
     }
 }
 constexpr wchar_t kBolt = 0xE945;            // LightningBolt
-constexpr wchar_t kDeviceGlyph = 0xE772;     // generic "Devices" glyph: one icon for every device
 constexpr wchar_t kBatteryUnknown = 0xE996;  // shown when there is nothing to display
 
 // Creates a font, falling back when the preferred face is not installed (GDI would silently substitute).
@@ -485,7 +484,7 @@ std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int bar
         bool branded = it.accent != Accent::None;
         BrandColor bc = AccentColor(it.accent, g_light);
         Rgb accent{ bc.r, bc.g, bc.b };
-        const wchar_t glyphChar = single ? kDeviceGlyph : Glyph(it.kind, it.bluetooth);
+        const wchar_t glyphChar = Glyph(it.kind, it.bluetooth);
         Piece icon{ RenderMask(std::wstring(1, glyphChar), icons, g_light), branded ? accent : fg, a, Px(5) };
         if (branded && !it.dim) {
             icon.haloR = Px(3);
@@ -513,7 +512,12 @@ std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int bar
         }
     }
     int boltRefW = 0;  // width of the charging bolt, reserved up front so the strip never resizes
-    if (single) boltRefW = RenderMask(std::wstring(1, kBolt), bolt, g_light).w;
+    int widestIcon = 0;  // widest device glyph of the whole set, so the single-device strip keeps one width
+    if (single) {
+        boltRefW = RenderMask(std::wstring(1, kBolt), bolt, g_light).w;
+        for (const auto& other : g_items)
+            widestIcon = std::max(widestIcon, RenderMask(std::wstring(1, Glyph(other.kind, other.bluetooth)), icons, g_light).w);
+    }
     DeleteObject(icons);
     DeleteObject(bolt);
     DeleteObject(text);
@@ -524,7 +528,7 @@ std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int bar
         Piece& ic = out[s.icon];
         Piece& lb = out[s.label];
         const int pad = Px(8), rowGapS = Px(2), barRoomS = Px(5);
-        const int iconCell = std::max(ic.m.w, Px(16));
+        const int iconCell = std::max(std::max(widestIcon, ic.m.w), Px(16));
         const int textCell = 3 * digitCell + pctCell;             // room for "100%"
         const int textW = std::max(textCell, lb.m.w);             // "?" and any custom text still fits
         const int boltCell = Px(2) + boltRefW;                    // reserved even when not charging
