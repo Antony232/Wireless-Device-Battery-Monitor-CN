@@ -364,7 +364,7 @@ Mask FixedNumber(const std::wstring& s, HFONT font, bool darkOnLight, int digitC
     for (size_t i = 0; i < glyphs.size(); i++) {
         const Mask& m = glyphs[i];
         const bool pct = i + 1 == glyphs.size();
-        const int cellX = pct ? 3 * digitCell : (3 - digits + (int)i) * digitCell;
+        const int cellX = pct ? digits * digitCell : (int)i * digitCell;  // left aligned, '%' right after
         const int cellW = pct ? pctCell : digitCell;
         const int x = cellX + (cellW - m.w) / 2, y = (h - m.h) / 2;
         for (int j = 0; j < m.h; j++)
@@ -527,16 +527,22 @@ std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int bar
         const Slot& s = slots.front();
         Piece& ic = out[s.icon];
         Piece& lb = out[s.label];
-        const int pad = Px(8), rowGapS = Px(2), barRoomS = Px(5);
+        // The trailing empty digit cell already reads as space, so the right edge needs less padding than
+        // the left one to look even.
+        const int pad = Px(6), padRight = Px(3), rowGapS = Px(2), barRoomS = Px(5), iconGap = Px(3);
         const int iconCell = std::max(std::max(widestIcon, ic.m.w), Px(16));
         const int textCell = 3 * digitCell + pctCell;             // room for "100%"
         const int textW = std::max(textCell, lb.m.w);             // "?" and any custom text still fits
-        const int boltCell = Px(2) + boltRefW;                    // reserved even when not charging
+        // Space for the charging bolt is reserved only while some device is actually charging, so an
+        // all-wireless setup keeps the shorter strip and the width still never changes while switching.
+        bool anyCharging = false;
+        for (const auto& other : g_items) anyCharging = anyCharging || other.charging;
+        const int boltCell = anyCharging ? Px(2) + boltRefW : 0;
         const bool stackedS = g_stacked && barH >= ic.m.h + rowGapS + lb.m.h + barRoomS + Px(6);
         if (stackedS) {
-            const int slotW = std::max(iconCell + boltCell, textW);
+            const int slotW = std::max(iconCell, textW + boltCell);
             const int top = (barH - (ic.m.h + rowGapS + lb.m.h + barRoomS)) / 2;
-            ic.px = pad + (slotW - ic.m.w) / 2;
+            ic.px = pad + (slotW - (ic.m.w + boltCell)) / 2;
             ic.py = top;
             if (s.bolt >= 0) {
                 out[s.bolt].px = ic.px + ic.m.w + Px(2);
@@ -546,19 +552,16 @@ std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int bar
             lb.py = top + ic.m.h + rowGapS;
             width = slotW + pad * 2;
         } else {
-            // Half of the reserved bolt slot on either side keeps the icon + percentage centred when the
-            // device is not charging.
-            const int x0 = pad + boltCell / 2;
-            ic.px = x0 + (iconCell - ic.m.w) / 2;
+            ic.px = pad + (iconCell - ic.m.w) / 2;
             ic.py = (barH - ic.m.h) / 2;
-            const int textX = x0 + iconCell + Px(5);
-            lb.px = textX + (textW - lb.m.w) / 2;
+            const int textX = pad + iconCell + iconGap;
+            lb.px = textX;  // digits are left aligned inside their fixed cells, so the gap stays tight
             lb.py = (barH - lb.m.h) / 2;
             if (s.bolt >= 0) {
                 out[s.bolt].px = textX + textW + Px(2);
                 out[s.bolt].py = (barH - out[s.bolt].m.h) / 2;
             }
-            width = pad * 2 + iconCell + Px(5) + textW + boltCell;
+            width = pad + iconCell + iconGap + textW + boltCell + padRight;
         }
         height = barH;
         return out;
