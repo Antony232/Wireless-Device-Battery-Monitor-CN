@@ -1,3 +1,4 @@
+#pragma code_page(65001)
 #include <winver.h>
 
 // App icon by nik-txt (app.svg, made by make_icon.py): white for the exe and dark themes, black for light ones.
@@ -18,8 +19,8 @@ BEGIN
   BEGIN
     BLOCK "040904B0"
     BEGIN
-      VALUE "FileDescription", "Wireless Battery"
-      VALUE "ProductName", "Wireless Battery"
+      VALUE "FileDescription", "无线设备电量监视器（Wireless-Device-Battery-Monitor-CN）"
+      VALUE "ProductName", "Wireless-Device-Battery-Monitor-CN"
       VALUE "FileVersion", "1.0.0"
       VALUE "ProductVersion", "1.0.0"
       VALUE "OriginalFilename", "WirelessBattery.exe"

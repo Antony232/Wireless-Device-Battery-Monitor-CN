@@ -174,10 +174,17 @@ std::wstring AutoCode() {
     return L"";
 }
 
+// The CN edition falls back to Chinese when neither a saved choice nor a Windows language applies.
+std::wstring DefaultCode() {
+    std::wstring code = AutoCode();
+    if (code.empty() && g_sources.count(L"zh-cn")) return L"zh-cn";
+    return code;
+}
+
 void Apply() {
     g_phrases.clear();
     g_rtl = false;
-    std::wstring code = g_choice.empty() ? AutoCode() : Lower(g_choice);
+    std::wstring code = g_choice.empty() ? DefaultCode() : Lower(g_choice);
     auto it = g_sources.find(code);
     if (it == g_sources.end()) return;  // English
     g_rtl = it->second.rtl;
