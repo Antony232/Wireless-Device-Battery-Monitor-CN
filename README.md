@@ -161,7 +161,8 @@ Wireless-Device-Battery-Monitor-CN/
 ## 许可与致谢
 
 - 本分支与上游一致，以 **GNU GPLv3 或更高版本** 发布，见 [LICENSE](LICENSE)。
-- 原作者 **krisgfx** 与所有上游贡献者：<https://github.com/krisgfx9/Wireless-Device-Battery-Monitor>
+- 原作者 **krisgfx**（bimbikri）与所有上游贡献者：<https://github.com/krisgfx9/Wireless-Device-Battery-Monitor>
+- 上游贡献者完整名单（共 96 人）与各自角色：[CONTRIBUTORS.md](CONTRIBUTORS.md)
 - 随附 [HeadsetControl](https://github.com/Sapd/HeadsetControl) 4.3.0（GPLv3），版权归其贡献者，见 [THIRD_PARTY_NOTICES.txt](installer/THIRD_PARTY_NOTICES.txt)。
 - 图标作者 nik-txt；各品牌协议细节来源于 HeadsetControl、OpenRazer、Solaar、rivalcfg 等开源项目的公开逆向成果（详见各驱动文件头注释）。
 
