@@ -4,6 +4,8 @@
 
 ![任务栏效果](docs/screenshot.png)
 
+<sub>上图是上游原版的并排显示截图；本分支默认改为「一次只显示一个设备」（可在右键菜单关闭），详见下方改动清单。</sub>
+
 这是 **Wireless Battery** 的简体中文本地化分支：界面默认中文、词条经过逐条校订、安装包与项目名改为 `Wireless-Device-Battery-Monitor-CN`，其余程序逻辑与上游保持一致。
 
 ---
