@@ -260,6 +260,7 @@ wchar_t Glyph(DeviceKind k, bool bluetooth) {
     }
 }
 constexpr wchar_t kBolt = 0xE945;            // LightningBolt
+constexpr wchar_t kDeviceGlyph = 0xE772;     // generic "Devices" glyph: one icon for every device
 constexpr wchar_t kBatteryUnknown = 0xE996;  // shown when there is nothing to display
 
 // Creates a font, falling back when the preferred face is not installed (GDI would silently substitute).
@@ -324,6 +325,58 @@ Mask RenderMask(const std::wstring& s, HFONT font, bool darkOnLight) {
     DeleteObject(bmp);
     DeleteDC(dc);
     return m;
+}
+
+// Equal-width digits: "9%" and "100%" then occupy the same box, so the strip keeps its size while the
+// wheel walks through devices. Non-numeric text ("?") falls back to the plain mask.
+bool IsNumberText(const std::wstring& s) {
+    if (s.size() < 2 || s.back() != L'%') return false;
+    for (size_t i = 0; i + 1 < s.size(); i++)
+        if (s[i] < L'0' || s[i] > L'9') return false;
+    return true;
+}
+
+int DigitAdvance(HFONT font) {
+    HDC dc = CreateCompatibleDC(nullptr);
+    HGDIOBJ o = SelectObject(dc, font);
+    int w = 0;
+    for (wchar_t c = L'0'; c <= L'9'; c++) {
+        SIZE sz{};
+        GetTextExtentPoint32W(dc, &c, 1, &sz);
+        w = std::max(w, (int)sz.cx);
+    }
+    SelectObject(dc, o);
+    DeleteDC(dc);
+    return w;
+}
+
+Mask FixedNumber(const std::wstring& s, HFONT font, bool darkOnLight, int digitCell, int pctCell) {
+    const int digits = (int)s.size() - 1;  // everything but the trailing '%'
+    std::vector<Mask> glyphs;
+    int h = 0;
+    for (wchar_t c : s) {
+        glyphs.push_back(RenderMask(std::wstring(1, c), font, darkOnLight));
+        h = std::max(h, glyphs.back().h);
+    }
+    Mask out;
+    out.w = 3 * digitCell + pctCell;
+    out.h = h;
+    out.a.assign((size_t)out.w * out.h, 0);
+    for (size_t i = 0; i < glyphs.size(); i++) {
+        const Mask& m = glyphs[i];
+        const bool pct = i + 1 == glyphs.size();
+        const int cellX = pct ? 3 * digitCell : (3 - digits + (int)i) * digitCell;
+        const int cellW = pct ? pctCell : digitCell;
+        const int x = cellX + (cellW - m.w) / 2, y = (h - m.h) / 2;
+        for (int j = 0; j < m.h; j++)
+            for (int k = 0; k < m.w; k++) {
+                const int X = x + k, Y = y + j;
+                if (X < 0 || Y < 0 || X >= out.w || Y >= out.h) continue;
+                BYTE& d = out.a[(size_t)Y * out.w + X];
+                d = (BYTE)std::max<int>(d, m.a[(size_t)j * m.w + k]);
+            }
+    }
+    return out;
 }
 
 struct Rgb { int r, g, b; };
@@ -410,6 +463,15 @@ std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int bar
     HFONT text = MakeFont(Px(13), FW_NORMAL, L"Segoe UI Variable Text", L"Segoe UI", Px(12));
     HFONT caption = MakeFont(std::max(8, Px(7)), FW_SEMIBOLD, L"Segoe UI Variable Text", L"Segoe UI");  // never under 8 px
 
+    // CN: with one device on the strip the box must not change size when the wheel switches device, so the
+    // icon is always the same glyph and the percentage is drawn on fixed digit cells.
+    const bool single = g_single && items.size() == 1 && !g_vertical;
+    int digitCell = 0, pctCell = 0;
+    if (single) {
+        digitCell = DigitAdvance(text);
+        pctCell = RenderMask(L"%", text, g_light).w + Px(1);
+    }
+
     std::vector<Piece> out;
     struct Slot { int icon, label, bolt; };  // indices of one device's pieces
     std::vector<Slot> slots;
@@ -423,7 +485,8 @@ std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int bar
         bool branded = it.accent != Accent::None;
         BrandColor bc = AccentColor(it.accent, g_light);
         Rgb accent{ bc.r, bc.g, bc.b };
-        Piece icon{ RenderMask(std::wstring(1, Glyph(it.kind, it.bluetooth)), icons, g_light), branded ? accent : fg, a, Px(5) };
+        const wchar_t glyphChar = single ? kDeviceGlyph : Glyph(it.kind, it.bluetooth);
+        Piece icon{ RenderMask(std::wstring(1, glyphChar), icons, g_light), branded ? accent : fg, a, Px(5) };
         if (branded && !it.dim) {
             icon.haloR = Px(3);
             icon.halo = Halo(icon.m, icon.haloR);
@@ -431,7 +494,9 @@ std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int bar
         }
         out.push_back(std::move(icon));
         std::wstring t = !it.text.empty() ? it.text : it.percent >= 0 ? std::to_wstring(it.percent) + L"%" : L"?";
-        Piece label{ RenderMask(t, text, g_light), tc, a, it.charging ? Px(2) : 0 };
+        Mask labelMask = (single && IsNumberText(t)) ? FixedNumber(t, text, g_light, digitCell, pctCell)
+                                                    : RenderMask(t, text, g_light);
+        Piece label{ std::move(labelMask), tc, a, it.charging ? Px(2) : 0 };
         if (branded && it.percent >= 0) {
             label.barPct = it.percent;
             label.barColor = it.low ? red : accent;
@@ -447,10 +512,53 @@ std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int bar
             out.push_back(c);
         }
     }
+    int boltRefW = 0;  // width of the charging bolt, reserved up front so the strip never resizes
+    if (single) boltRefW = RenderMask(std::wstring(1, kBolt), bolt, g_light).w;
     DeleteObject(icons);
     DeleteObject(bolt);
     DeleteObject(text);
     DeleteObject(caption);
+
+    if (single && slots.size() == 1) {
+        const Slot& s = slots.front();
+        Piece& ic = out[s.icon];
+        Piece& lb = out[s.label];
+        const int pad = Px(8), rowGapS = Px(2), barRoomS = Px(5);
+        const int iconCell = std::max(ic.m.w, Px(16));
+        const int textCell = 3 * digitCell + pctCell;             // room for "100%"
+        const int textW = std::max(textCell, lb.m.w);             // "?" and any custom text still fits
+        const int boltCell = Px(2) + boltRefW;                    // reserved even when not charging
+        const bool stackedS = g_stacked && barH >= ic.m.h + rowGapS + lb.m.h + barRoomS + Px(6);
+        if (stackedS) {
+            const int slotW = std::max(iconCell + boltCell, textW);
+            const int top = (barH - (ic.m.h + rowGapS + lb.m.h + barRoomS)) / 2;
+            ic.px = pad + (slotW - ic.m.w) / 2;
+            ic.py = top;
+            if (s.bolt >= 0) {
+                out[s.bolt].px = ic.px + ic.m.w + Px(2);
+                out[s.bolt].py = top + (ic.m.h - out[s.bolt].m.h) / 2;
+            }
+            lb.px = pad + (slotW - lb.m.w) / 2;
+            lb.py = top + ic.m.h + rowGapS;
+            width = slotW + pad * 2;
+        } else {
+            // Half of the reserved bolt slot on either side keeps the icon + percentage centred when the
+            // device is not charging.
+            const int x0 = pad + boltCell / 2;
+            ic.px = x0 + (iconCell - ic.m.w) / 2;
+            ic.py = (barH - ic.m.h) / 2;
+            const int textX = x0 + iconCell + Px(5);
+            lb.px = textX + (textW - lb.m.w) / 2;
+            lb.py = (barH - lb.m.h) / 2;
+            if (s.bolt >= 0) {
+                out[s.bolt].px = textX + textW + Px(2);
+                out[s.bolt].py = (barH - out[s.bolt].m.h) / 2;
+            }
+            width = pad * 2 + iconCell + Px(5) + textW + boltCell;
+        }
+        height = barH;
+        return out;
+    }
 
     height = barH;
     const int rowGap = Px(2), barRoom = Px(5);  // barRoom: space for a brand level bar under the text
