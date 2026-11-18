@@ -20,25 +20,37 @@ jobs:
       - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
           msystem: MINGW64
-          install: mingw-w64-x86_64-gcc make
+          install: mingw-w64-x86_64-gcc make mingw-w64-x86_64-nsis
 
       - name: Build WirelessBattery.exe
         shell: msys2 {0}
         run: make
 
-      - name: Test Rapoo protocol and driver
+      - name: Run unit tests
         shell: msys2 {0}
         run: make test
 
-      - name: Install Inno Setup
+      - name: Fetch HeadsetControl binary
         shell: pwsh
-        run: choco install innosetup --no-progress -y
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $hc = 'third_party/headsetcontrol/headsetcontrol.exe'
+          New-Item -ItemType Directory -Force (Split-Path $hc) | Out-Null
+          Invoke-WebRequest 'https://github.com/Sapd/HeadsetControl/releases/download/4.3.0/headsetcontrol-windows-x86_64.exe' -OutFile $hc
+          $hash = (Get-FileHash $hc -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne 'e371da043710ddb8fc70af77f2ccad1cd03f8c6f49ba423e08764ad7a94a3c40') { throw "HeadsetControl checksum mismatch: $hash" }
 
-      - name: Build installer and portable zip
+      - name: Build installer (NSIS)
+        shell: msys2 {0}
+        run: makensis installer/Wireless-Device-Battery-Monitor-CN.nsi
+
+      - name: Build portable zip
         shell: pwsh
         run: |
           $version = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.0.0' }
-          ./installer/build-installer.ps1 -Version $version
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item LICENSE -Destination LICENSE.txt
+          Compress-Archive -Force -Path WirelessBattery.exe,third_party/headsetcontrol/headsetcontrol.exe,LICENSE.txt,installer/README.txt,installer/THIRD_PARTY_NOTICES.txt -DestinationPath "dist/Wireless-Device-Battery-Monitor-CN-$version-portable.zip"
 
       - name: Fetch HeadsetControl source (GPL corresponding source for the bundled binary)
         shell: pwsh
@@ -48,38 +60,26 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: WirelessBattery
+          name: WirelessBattery-CN
           path: dist/*
 
-  # Only this job can publish, and only for version tags pushed by the maintainer.
+  # Only this job can publish, and only for version tags.
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: read  # the Discord announcement reads merged PR titles
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: WirelessBattery
+          name: WirelessBattery-CN
           path: dist
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: dist/*
           append_body: true
           body: |
-            Enjoying Wireless Battery? Support it on [Ko-fi](https://ko-fi.com/krisgfx), [PayPal](https://www.paypal.com/paypalme/krisgfx) or [GitHub Sponsors](https://github.com/sponsors/krisgfx9).
+            本次发布由 CI 自动构建：安装包 `Wireless-Device-Battery-Monitor-CN-Setup-*.exe`、便携版 zip，以及随包分发的 HeadsetControl 4.3.0 对应源码。
 
-      # Announce the release on Discord: first what changed, then the newly supported devices.
-      # The webhook lives in the DISCORD_WEBHOOK repository secret, never in the code. A failed post
-      # does not fail the release.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-      - name: Announce on Discord
-        continue-on-error: true
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3 scripts/discord-release.py --tag "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+            原项目 **Wireless Battery** 由 krisgfx（[@krisgfx9](https://github.com/krisgfx9)）编写，本项目是其简体中文本地化分支，按 GNU GPLv3 发布；原作者与上游贡献者见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。上游赞助渠道请前往 [原仓库](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor)。
