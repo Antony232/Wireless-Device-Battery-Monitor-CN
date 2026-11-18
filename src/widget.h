@@ -1,7 +1,9 @@
 #pragma once
-// A small transparent strip on the taskbar, just left of the notification area, showing
-// "[icon] 30%  [icon] 93%". Implemented as a layered child window of the taskbar (Shell_TrayWnd), with a
-// copy on each secondary-monitor taskbar (Shell_SecondaryTrayWnd) next to its clock.
+// A small transparent strip on the taskbar, just left of the notification area, showing "[icon] 30%".
+// With more than one device only the current one is drawn, so the strip never covers the task buttons;
+// the mouse wheel over the strip switches between devices with a short slide (see SetSingleDevice).
+// Implemented as a layered child window of the taskbar (Shell_TrayWnd), with a copy on each
+// secondary-monitor taskbar (Shell_SecondaryTrayWnd) next to its clock.
 #include <windows.h>
 #include <string>
 #include <vector>
@@ -31,6 +33,9 @@ void SetLightTheme(bool light);
 void SetBackground(bool on);
 // Icon above the percentage instead of beside it, when the taskbar is tall enough (kept across Create/Destroy).
 void SetStacked(bool on);
+// Draw one device at a time instead of one block per device (default, kept across Create/Destroy).
+// With the mouse over the strip, the wheel walks through the devices; the switch is animated.
+void SetSingleDevice(bool on);
 // Which taskbars show the strip: L"all" (default), L"main", or the id of one other monitor from
 // OtherMonitors() (then only that monitor shows it). Kept across Create/Destroy.
 void SetMonitorChoice(const std::wstring& choice);

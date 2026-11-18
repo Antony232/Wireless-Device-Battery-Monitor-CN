@@ -22,6 +22,27 @@ int g_lastW = -1, g_lastDpi = 0, g_lastLeft = -1;
 SIZE g_size{};
 HINSTANCE g_inst;
 
+// CN: the strip shows one device at a time, so a second and third device never push the strip over the
+// task buttons. g_index is the device on screen; while g_animStart is set, the device the wheel just left
+// (g_animFrom) is still drawn on its way out and the new one (g_animTo) slides in.
+bool g_single = true;
+int g_index = 0;
+int g_animFrom = -1, g_animTo = -1, g_animDir = 1;
+ULONGLONG g_animStart = 0;
+const UINT kAnimTimer = 1;              // WM_TIMER id that drives the slide
+const UINT kWheelMsg = WM_APP + 21;     // posted from the low-level hook to the strip
+const int kSlideMs = 190;               // one full slide
+HHOOK g_wheelHook = nullptr;
+
+// 0..1, eased out so the device settles instead of stopping dead. 1 = nothing to animate.
+double SlideProgress() {
+    if (!g_animStart) return 1.0;
+    double t = (double)(GetTickCount64() - g_animStart) / (double)kSlideMs;
+    if (t >= 1.0) return 1.0;
+    t = 1.0 - t;
+    return 1.0 - t * t * t;
+}
+
 // Copies of the strip on secondary-monitor taskbars (Shell_SecondaryTrayWnd), so the levels stay visible
 // while a game runs fullscreen on the main screen. Same drawing, same click and tooltip; each one sits
 // left of its taskbar's clock. The primary strip above is unchanged, and with one monitor none exist.
@@ -380,7 +401,7 @@ struct Piece {
 //    used only when the taskbar is tall enough, otherwise the normal row
 //  * vertical (left / right taskbar, from PR #321): one device per row block, stacked top to bottom
 // `width` and `height` return the strip's size; in the vertical layout the width is the bar's.
-std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
+std::vector<Piece> LayoutOf(const std::vector<const WidgetItem*>& items, int barW, int barH, int& width, int& height) {
     Rgb fg = g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 };
     Rgb red = g_light ? Rgb{ 196, 30, 40 } : Rgb{ 255, 90, 90 };
     Rgb charge = g_light ? Rgb{ 0, 120, 212 } : Rgb{ 96, 205, 255 };
@@ -392,9 +413,9 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
     std::vector<Piece> out;
     struct Slot { int icon, label, bolt; };  // indices of one device's pieces
     std::vector<Slot> slots;
-    if (g_items.empty()) out.push_back({ RenderMask(std::wstring(1, kBatteryUnknown), icons, g_light), fg, 110, 0 });
-    for (size_t i = 0; i < g_items.size(); i++) {
-        const auto& it = g_items[i];
+    if (items.empty()) out.push_back({ RenderMask(std::wstring(1, kBatteryUnknown), icons, g_light), fg, 110, 0 });
+    for (size_t i = 0; i < items.size(); i++) {
+        const auto& it = *items[i];
         int a = it.dim ? 120 : 255;
         Rgb tc = it.low ? red : fg;
         size_t glyph = out.size();
@@ -417,7 +438,7 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
         }
         out.push_back(std::move(label));
         if (it.charging) out.push_back({ RenderMask(std::wstring(1, kBolt), bolt, g_light), charge, a, 0 });
-        out.back().gapAfter = i + 1 < g_items.size() ? Px(14) : 0;
+        out.back().gapAfter = i + 1 < items.size() ? Px(14) : 0;
         if (!it.label.empty()) {  // tiny caption in the bottom-right corner of the icon
             Piece c{ RenderMask(it.label, caption, g_light), fg, a, 0 };
             c.anchor = (int)glyph;
@@ -489,12 +510,81 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
     return out;
 }
 
+std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
+    std::vector<const WidgetItem*> all;
+    for (const auto& it : g_items) all.push_back(&it);
+    return LayoutOf(all, barW, barH, width, height);
+}
+
+// The device the strip currently shows (-1 when there is none).
+int CurrentIndex() {
+    if (g_items.empty() || !g_single) return -1;
+    return std::clamp(g_index, 0, (int)g_items.size() - 1);
+}
+
+// One device forward (+1) or back (-1), with the slide. The wheel walks the same order as the menu.
+void PaintStrip(HWND wnd, HWND taskbar, bool hover, SIZE& size);
+void PaintMirror(Mirror& m);
+
+void CycleDevice(int step) {
+    if (!g_single || g_items.size() < 2) return;
+    int n = (int)g_items.size();
+    int from = std::clamp(g_index, 0, n - 1);
+    int to = ((from + step) % n + n) % n;
+    if (to == from) return;
+    g_animFrom = from;
+    g_animTo = to;
+    g_animDir = step > 0 ? 1 : -1;
+    g_animStart = GetTickCount64();
+    if (!g_animStart) g_animStart = 1;  // 0 means "no slide"
+    g_index = to;
+    if (g_wnd) SetTimer(g_wnd, kAnimTimer, 15, nullptr);
+    for (auto& m : g_mirrors) PaintMirror(m);
+    if (g_wnd) PaintStrip(g_wnd, g_taskbar, g_hover, g_size);
+}
+
 // Draws the strip for one window: the primary one or a mirror on a secondary taskbar.
 void PaintStrip(HWND wnd, HWND taskbar, bool hover, SIZE& size) {
     RECT bar;
     GetClientRect(taskbar, &bar);
+    const int barW = bar.right - bar.left, barH = bar.bottom - bar.top;
+
+    // What is on screen this frame: the current device, or two of them while the wheel slide runs.
+    struct Shot {
+        std::vector<Piece> pieces;
+        int w = 0, h = 0, dx = 0, alpha = 255;
+    };
+    std::vector<Shot> shots;
+    bool sliding = g_animStart != 0 && g_animFrom >= 0 && g_animTo >= 0 && g_animFrom < (int)g_items.size() &&
+                   g_animTo < (int)g_items.size() && g_animFrom != g_animTo;
+    if (sliding) {
+        double u = SlideProgress();
+        Shot out, in;
+        out.pieces = LayoutOf({ &g_items[g_animFrom] }, barW, barH, out.w, out.h);
+        in.pieces = LayoutOf({ &g_items[g_animTo] }, barW, barH, in.w, in.h);
+        out.dx = -(g_animDir * (int)(u * out.w + 0.5));
+        out.alpha = (int)((1.0 - u) * 255.0 + 0.5);
+        in.dx = g_animDir * (int)((1.0 - u) * in.w + 0.5);
+        in.alpha = (int)(u * 255.0 + 0.5);
+        shots.push_back(std::move(out));
+        shots.push_back(std::move(in));
+    } else {
+        Shot one;
+        std::vector<const WidgetItem*> cur;
+        if (g_single) {
+            int i = CurrentIndex();
+            if (i >= 0) cur.push_back(&g_items[i]);
+            one.pieces = LayoutOf(cur, barW, barH, one.w, one.h);
+        } else {
+            one.pieces = Layout(barW, barH, one.w, one.h);
+        }
+        shots.push_back(std::move(one));
+    }
     int W = 0, H = 0;
-    auto pieces = Layout(bar.right - bar.left, bar.bottom - bar.top, W, H);
+    for (const auto& s : shots) {
+        W = std::max(W, s.w);
+        H = std::max(H, s.h);
+    }
     if (W <= 0 || H <= 0) return;
     Canvas cv(W, H);
 
@@ -515,36 +605,42 @@ void PaintStrip(HWND wnd, HWND taskbar, bool hover, SIZE& size) {
     if (g_background) roundRect(Px(4), Px(6), barColor, 240);
     if (hover) roundRect(Px(4), Px(4), g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 }, g_light ? 20 : 26);
 
-    int x = Px(8);
     Rgb track = g_light ? Rgb{ 0, 0, 0 } : Rgb{ 255, 255, 255 };
-    std::vector<int> xs(pieces.size()), ys(pieces.size());
-    for (size_t i = 0; i < pieces.size(); i++) {
-        const Piece& p = pieces[i];
-        if (p.anchor < 0) {
-            bool fixed = p.px != INT_MIN;  // stacked / vertical layout: Layout() placed it
-            xs[i] = fixed ? p.px : x;
-            ys[i] = fixed ? p.py : (H - p.m.h) / 2;
-            if (p.haloR) cv.Draw(p.halo, xs[i] - p.haloR, ys[i] - p.haloR, p.color, p.haloAlpha * p.alpha / 255);
-            if (p.barPct >= 0) {
-                // The bar spans the text's width, like Synapse's battery bar; in the row layout text and bar
-                // are centred together.
-                int bh = std::max(2, Px(2)), gap = Px(3);
-                if (!fixed) ys[i] = (H - (p.m.h + gap + bh)) / 2;
-                int by = ys[i] + p.m.h + gap;
-                int fill = std::max(p.barPct > 0 ? 1 : 0, (p.barPct * p.m.w + 50) / 100);
-                for (int yy = by; yy < by + bh; yy++)
-                    for (int xx = 0; xx < p.m.w; xx++)
-                        cv.Blend(xs[i] + xx, yy, xx < fill ? p.barColor : track, xx < fill ? p.alpha : 45 * p.alpha / 255);
+    for (const auto& shot : shots) {
+        const int am = shot.alpha;  // the slide fades the device that comes or goes
+        if (am <= 0) continue;
+        const auto& pieces = shot.pieces;
+        int x = Px(8) + shot.dx;
+        std::vector<int> xs(pieces.size()), ys(pieces.size());
+        for (size_t i = 0; i < pieces.size(); i++) {
+            const Piece& p = pieces[i];
+            const int a = p.alpha * am / 255;
+            if (p.anchor < 0) {
+                bool fixed = p.px != INT_MIN;  // stacked / vertical layout: Layout() placed it
+                xs[i] = (fixed ? p.px : x) + (fixed ? shot.dx : 0);
+                ys[i] = fixed ? p.py : (H - p.m.h) / 2;
+                if (p.haloR) cv.Draw(p.halo, xs[i] - p.haloR, ys[i] - p.haloR, p.color, p.haloAlpha * a / 255);
+                if (p.barPct >= 0) {
+                    // The bar spans the text's width, like Synapse's battery bar; in the row layout text and bar
+                    // are centred together.
+                    int bh = std::max(2, Px(2)), gap = Px(3);
+                    if (!fixed) ys[i] = (H - (p.m.h + gap + bh)) / 2;
+                    int by = ys[i] + p.m.h + gap;
+                    int fill = std::max(p.barPct > 0 ? 1 : 0, (p.barPct * p.m.w + 50) / 100);
+                    for (int yy = by; yy < by + bh; yy++)
+                        for (int xx = 0; xx < p.m.w; xx++)
+                            cv.Blend(xs[i] + xx, yy, xx < fill ? p.barColor : track, xx < fill ? a : 45 * a / 255);
+                }
+                if (!fixed) x += p.m.w + p.gapAfter;
+            } else {  // caption: one-pixel outline in the taskbar's colour so it reads over the icon's lines
+                xs[i] = xs[p.anchor] + p.bx;
+                ys[i] = ys[p.anchor] + p.by;
+                for (int oy = -1; oy <= 1; oy++)
+                    for (int ox = -1; ox <= 1; ox++)
+                        if (ox || oy) cv.Draw(p.m, xs[i] + ox, ys[i] + oy, barColor, a);
             }
-            if (!fixed) x += p.m.w + p.gapAfter;
-        } else {  // caption: one-pixel outline in the taskbar's colour so it reads over the icon's lines
-            xs[i] = xs[p.anchor] + p.bx;
-            ys[i] = ys[p.anchor] + p.by;
-            for (int oy = -1; oy <= 1; oy++)
-                for (int ox = -1; ox <= 1; ox++)
-                    if (ox || oy) cv.Draw(p.m, xs[i] + ox, ys[i] + oy, barColor, 255);
+            cv.Draw(p.m, xs[i], ys[i], p.color, a);
         }
-        cv.Draw(p.m, xs[i], ys[i], p.color, p.alpha);
     }
 
     HDC screen = GetDC(nullptr);
@@ -770,6 +866,42 @@ void SetHover(HWND h, bool on) {
         }
 }
 
+// Catches the wheel over the strip even when Windows does not deliver scroll messages to the window
+// under the cursor ("scroll inactive windows when I hover over them" turned off). Installed only while
+// the pointer is on the strip, so the system-wide hook lives for a moment, not for the whole session.
+LRESULT CALLBACK WheelProc(int code, WPARAM wp, LPARAM lp) {
+    if (code == HC_ACTION && wp == WM_MOUSEWHEEL) {
+        const MSLLHOOKSTRUCT* m = (const MSLLHOOKSTRUCT*)lp;
+        int delta = (int)(short)HIWORD(m->mouseData);
+        if (delta) {
+            RECT r;
+            HWND target = nullptr;
+            if (g_wnd && IsWindowVisible(g_wnd) && GetWindowRect(g_wnd, &r) && PtInRect(&r, m->pt))
+                target = g_wnd;
+            for (auto& mir : g_mirrors) {
+                if (target) break;
+                if (mir.wnd && IsWindowVisible(mir.wnd) && GetWindowRect(mir.wnd, &r) && PtInRect(&r, m->pt))
+                    target = mir.wnd;
+            }
+            if (target) {  // swallow it here and let the window animate; the hook itself stays cheap
+                PostMessageW(target, kWheelMsg, delta > 0 ? -1 : +1, 0);
+                return 1;
+            }
+        }
+    }
+    return CallNextHookEx(g_wheelHook, code, wp, lp);
+}
+
+// The hook lives exactly as long as single-device mode has something to switch to. It is cheap (it looks
+// at wheel messages and nothing else) and keeps the wheel working even when Windows sends scrolls to the
+// focused window instead of the one under the cursor.
+void UpdateWheelHook() {
+    const bool want = g_single && g_items.size() > 1;
+    if (want && !g_wheelHook)
+        g_wheelHook = SetWindowsHookExW(WH_MOUSE_LL, WheelProc, g_inst, 0);
+    else if (!want && g_wheelHook) { UnhookWindowsHookEx(g_wheelHook); g_wheelHook = nullptr; }
+}
+
 LRESULT CALLBACK WidgetProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_MOUSEMOVE: {
@@ -781,6 +913,29 @@ LRESULT CALLBACK WidgetProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_MOUSELEAVE:
             SetHover(h, false);
             return 0;
+        case WM_MOUSEWHEEL: {  // hover-scrolling window: this arrives without the hook above
+            int delta = GET_WHEEL_DELTA_WPARAM(wp);
+            if (delta) CycleDevice(delta > 0 ? -1 : +1);
+            return 0;
+        }
+        case kWheelMsg:  // posted by WheelProc
+            CycleDevice((int)wp);
+            return 0;
+        case WM_TIMER:
+            if (wp == kAnimTimer) {
+                if (SlideProgress() >= 1.0) {
+                    KillTimer(h, kAnimTimer);
+                    g_animStart = 0;
+                    g_animFrom = g_animTo;
+                    PaintAll();
+                    widget::Reposition();
+                } else {
+                    for (auto& m : g_mirrors) PaintMirror(m);
+                    if (g_wnd) PaintStrip(g_wnd, g_taskbar, g_hover, g_size);
+                }
+                return 0;
+            }
+            break;
         case WM_LBUTTONUP:
         case WM_RBUTTONUP:
             PostMessageW(g_notify, g_clickMsg, 0, 0);
@@ -862,15 +1017,26 @@ void Destroy() {
     g_primaryHidden = false;  // the next Create() decides again
     if (g_wbWake) WatchWidgetsButton(nullptr);
     if (g_tip) { DestroyWindow(g_tip); g_tip = nullptr; }
-    if (g_wnd) { DestroyWindow(g_wnd); g_wnd = nullptr; }
+    if (g_wheelHook) { UnhookWindowsHookEx(g_wheelHook); g_wheelHook = nullptr; }
+    if (g_wnd) { KillTimer(g_wnd, kAnimTimer); DestroyWindow(g_wnd); g_wnd = nullptr; }
     g_taskbar = nullptr;
     g_hover = false;
+    g_animStart = 0;
+    g_animFrom = g_animTo = -1;
+    g_index = 0;
 }
 
 bool Alive() { return g_wnd && IsWindow(g_wnd) && g_taskbar && IsWindow(g_taskbar); }
 
 void SetItems(const std::vector<WidgetItem>& items, const std::wstring& tooltip) {
     g_items = items;
+    // A device went away (or came back) mid-slide: drop the slide instead of pairing wrong devices.
+    if (g_items.size() < 2 || g_animFrom >= (int)g_items.size() || g_animTo >= (int)g_items.size()) {
+        g_animStart = 0;
+        g_animFrom = g_animTo = -1;
+        if (g_wnd) KillTimer(g_wnd, kAnimTimer);
+    }
+    g_index = g_items.empty() ? 0 : std::clamp(g_index, 0, (int)g_items.size() - 1);
     if (tooltip != g_tipText && g_tip) {
         g_tipText = tooltip;
         TTTOOLINFOW ti{ sizeof(ti) };
@@ -883,6 +1049,7 @@ void SetItems(const std::vector<WidgetItem>& items, const std::wstring& tooltip)
             SendMessageW(g_tip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
         }
     }
+    UpdateWheelHook();
     PaintAll();
     Reposition();
 }
@@ -900,6 +1067,17 @@ void SetBackground(bool on) {
 
 void SetStacked(bool on) {
     g_stacked = on;
+    PaintAll();
+    if (g_wnd) Reposition();
+}
+
+void SetSingleDevice(bool on) {
+    g_single = on;
+    g_animStart = 0;
+    g_animFrom = g_animTo = -1;
+    g_index = 0;
+    if (g_wnd) KillTimer(g_wnd, kAnimTimer);
+    UpdateWheelHook();
     PaintAll();
     if (g_wnd) Reposition();
 }
