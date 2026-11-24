@@ -38,7 +38,7 @@
 - **词条校订**：`lang/zh-CN.txt` 全部 97 条逐条校对，统一标点（中文省略号/引号）、术语（"接收器""挂件""开机启动"）和语气。
 - **残留硬编码汉化**：托盘提示前缀、报告窗口标题改为中文产品名。
 - **版本资源中文化**：文件描述、产品名改为中文/CN 版名称。
-- **安装包重做**：Inno Setup 脚本换成 NSIS 脚本，中文安装向导、免管理员、按用户安装，产物为 `Wireless-Device-Battery-Monitor-CN-Setup-1.0.0.exe`。
+- **安装包重做**：Inno Setup 脚本换成 NSIS 脚本，中文安装向导、免管理员、按用户安装，产物为 `Wireless-Device-Battery-Monitor-CN-Setup-1.0.1.exe`。
 - **挂件只显示一个设备**：设备多于一个时，任务栏挂件默认只显示当前设备（不再向右挤占任务按钮），鼠标悬停时滚轮上下切换，切换带左右滑动淡入淡出动画；右键菜单可关掉这项，恢复上游的并排显示。
 - **文档中文化**：本 README 与安装目录内的 `README.txt`。
 
@@ -77,7 +77,7 @@
 
 ### 方式一：安装包（推荐）
 
-1. 下载 `Wireless-Device-Battery-Monitor-CN-Setup-1.0.0.exe`（见 Releases）。
+1. 下载 `Wireless-Device-Battery-Monitor-CN-Setup-1.0.1.exe`（见 Releases）。
 2. 双击运行，按中文向导下一步即可；**不需要管理员权限**，默认安装到
    `%LOCALAPPDATA%\Programs\Wireless-Device-Battery-Monitor-CN`。
 3. 安装器可选择"开机自动启动"，装完可直接启动；卸载在"设置 → 应用"里。
@@ -133,7 +133,7 @@ make clean
 ```bat
 :: 1) 先构建出 WirelessBattery.exe
 build.bat
-:: 2) 生成 dist\Wireless-Device-Battery-Monitor-CN-Setup-1.0.0.exe
+:: 2) 生成 dist\Wireless-Device-Battery-Monitor-CN-Setup-1.0.1.exe
 installer\build-installer.cmd
 ```
 
