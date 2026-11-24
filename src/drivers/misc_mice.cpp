@@ -63,6 +63,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cwctype>
 #include <map>
 #include <memory>
 #include <set>
@@ -265,7 +266,17 @@ void PollAjazz(PollContext& ctx) {
                 s.key = L"ajazz:" + Hex4(vid) + L":" + Hex4(pid);
                 std::string model;
                 for (int i = 4; i < 8 && r[i] >= 0x20 && r[i] < 0x7F; i++) model += (char)r[i];
-                s.name = model.size() == 4 && model[0] == 'M' ? L"Ajazz AJ" + std::wstring(model.begin() + 1, model.end()) : L"Ajazz mouse";
+                std::wstring name = model.size() == 4 && model[0] == 'M' ? L"Ajazz AJ" + std::wstring(model.begin() + 1, model.end()) : L"Ajazz mouse";
+                // Other brands ship the same Telink-style receiver and answer this protocol with an
+                // Mxxx model field: a MEETION mouse on 249A:5C2F reports "MeetionWireless" yet used to
+                // show up as "Ajazz AJ620" (issue 2). Prefer the product string when it names another
+                // brand, keeping the model number from the reply.
+                std::wstring product = HidProduct(*c);
+                std::wstring lowered = product;
+                for (wchar_t& ch : lowered) ch = (wchar_t)towlower(ch);
+                if (lowered.find(L"meetion") != std::wstring::npos)
+                    name = model.size() == 4 && model[0] == 'M' ? L"Meetion " + std::wstring(model.begin() + 1, model.end()) : L"Meetion mouse";
+                s.name = name;
                 s.kind = DeviceKind::Mouse;
                 bool receiver = vid == 0x249A;
                 s.via = receiver ? L"2.4 GHz receiver" : L"USB cable";
