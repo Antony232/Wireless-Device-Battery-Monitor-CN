@@ -26,6 +26,7 @@ constexpr UINT WM_RESULTS = WM_APP + 2;
 constexpr UINT WM_WIDGET_CLICK = WM_APP + 3;
 constexpr UINT_PTR TIMER_DEBOUNCE = 1;
 constexpr UINT_PTR TIMER_WIDGET = 2;
+constexpr UINT_PTR TIMER_SETTLE = 3;   // second pass after a device has finished enumerating
 constexpr DWORD POLL_INTERVAL_MS = 60 * 1000;
 constexpr int LOW_BATTERY = 15;
 constexpr UINT PLACEHOLDER_ID = 1;
@@ -828,13 +829,22 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (wp) DestroyWindow(h);
             return 0;
         case WM_DEVICECHANGE:
-            if (wp == DBT_DEVICEARRIVAL || wp == DBT_DEVICEREMOVECOMPLETE) RefreshSoon(2500);
+            if (wp == DBT_DEVICEARRIVAL) {
+                // Two passes: one almost at once so a freshly plugged receiver shows up immediately,
+                // and a second one after the device has settled (a wireless link, and the battery
+                // channel behind it, need a moment to come up).
+                RefreshSoon(400);
+                SetTimer(h, TIMER_SETTLE, 2500, nullptr);
+            } else if (wp == DBT_DEVICEREMOVECOMPLETE) {
+                RefreshSoon(800);
+            }
             return TRUE;
         case WM_POWERBROADCAST:
             if (wp == PBT_APMRESUMEAUTOMATIC) RefreshSoon(5000);
             return TRUE;
         case WM_TIMER:
             if (wp == TIMER_DEBOUNCE) { KillTimer(h, TIMER_DEBOUNCE); SetEvent(g_refreshEvt); }
+            if (wp == TIMER_SETTLE) { KillTimer(h, TIMER_SETTLE); SetEvent(g_refreshEvt); }
             if (wp == TIMER_WIDGET) Reconcile();
             return 0;
         case WM_SETTINGCHANGE:
@@ -845,6 +855,7 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_DESTROY:
             KillTimer(h, TIMER_WIDGET);
+            KillTimer(h, TIMER_SETTLE);
             widget::Destroy();
             SetEvent(g_stopEvt);
             if (g_worker) WaitForSingleObject(g_worker, 5000);
