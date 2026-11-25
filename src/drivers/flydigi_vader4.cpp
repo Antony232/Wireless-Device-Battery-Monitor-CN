@@ -79,7 +79,8 @@ void PollFlydigiVader4(PollContext& ctx)
         s.percent = Clamp100(level * 100 / kLevelMax);
         s.charging = false;
         s.vid = kVid;
-        s.levelText = std::to_wstring(level) + L"/" + std::to_wstring(kLevelMax);
+        // Keep the raw step in the detail line so the 20 % granularity stays visible.
+        s.detail = std::to_wstring(level) + L"/" + std::to_wstring(kLevelMax) + L" steps";
         ctx.Add(s, kVid, kPid);
         break;
     }
