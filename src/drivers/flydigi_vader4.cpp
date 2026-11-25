@@ -55,11 +55,12 @@ void PollFlydigiVader4(PollContext& ctx)
                 break;
             if (d.Read(r, remaining) < 0)
                 continue;
-            // Numbered replies keep the 0x04 report id in byte 0; unnumbered ones shift left by one.
-            const size_t echo = (r.size() > 0 && r[0] == 0x04) ? 16 : 15;
+            // Numbered replies keep the 0x04 report id in byte 0, so the command echo sits at 15
+            // and the level at 11. An unnumbered reply shifts both left by one.
+            const size_t echo = (r.size() > 0 && r[0] == 0x04) ? 15 : 14;
             if (r.size() <= echo || r[echo] != kCmdDeviceInfo)
                 continue;
-            level = r[echo - 5];  // reply byte 11, counted from the command echo
+            level = r[echo - 4];  // reply byte 11 (battery level), counted from the echo
             break;
         }
 
