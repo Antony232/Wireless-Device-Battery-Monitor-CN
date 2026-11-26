@@ -26,6 +26,7 @@ constexpr UINT WM_RESULTS = WM_APP + 2;
 constexpr UINT WM_WIDGET_CLICK = WM_APP + 3;
 constexpr UINT_PTR TIMER_DEBOUNCE = 1;
 constexpr UINT_PTR TIMER_WIDGET = 2;
+constexpr UINT_PTR TIMER_SETTLE = 3;   // second pass after a device has finished enumerating
 constexpr DWORD POLL_INTERVAL_MS = 60 * 1000;
 constexpr int LOW_BATTERY = 15;
 constexpr UINT PLACEHOLDER_ID = 1;
@@ -64,6 +65,7 @@ struct TrayEntry {
     DeviceStatus st;
     int lastPct = -1;        // last known percentage, kept while the device sleeps
     ULONGLONG lastSeen = 0;
+    int miss = 0;            // consecutive passes that did not report this device
     bool added = false;
     bool lowWarned = false;
     std::wstring iconSig;    // what the current icon shows, to avoid needless redraws
@@ -487,29 +489,43 @@ void UpdateWidget() {
 }
 
 void OnResults(std::vector<DeviceStatus>& results) {
+    // A receiver that is being enumerated locks the HID tree for a moment, so one pass can come back
+    // empty or nearly empty. Acting on that made every tray icon blink out and reappear as soon as a
+    // device was plugged in. When a pass loses several devices at once, distrust it and let the
+    // follow-up pass decide.
+    static size_t prevCount = 0;
+    const bool suspect = prevCount >= 2 && results.size() + 1 < prevCount;
+    prevCount = results.size();
+
     std::map<std::wstring, bool> seen;
     for (auto& s : results) {
         auto& e = g_entries[s.key];
         if (!e.uid) e.uid = StableId(s.key);
         e.st = s;
+        e.miss = 0;
         if (s.percent >= 0) e.lastPct = s.percent;
         e.lastSeen = GetTickCount64();
         seen[s.key] = true;
         ApplyEntry(e);
     }
     for (auto it = g_entries.begin(); it != g_entries.end();) {
+        if (seen.count(it->first)) { ++it; continue; }
         auto& e = it->second;
+        e.miss++;
         // Some receivers drop sleeping devices from the link; keep showing the last value for a while.
-        bool inGrace = !seen.count(it->first) && e.st.graceSec > 0 && e.st.connected &&
-                       GetTickCount64() - e.lastSeen < (ULONGLONG)e.st.graceSec * 1000;
+        const bool inGrace = e.st.graceSec > 0 && e.st.connected &&
+                             GetTickCount64() - e.lastSeen < (ULONGLONG)e.st.graceSec * 1000;
         if (inGrace) {
             e.st.percent = -1;
             e.st.asleep = true;
             ApplyEntry(e);
         }
-        if (!seen.count(it->first) && !inGrace) {
-            if (it->second.added) TrayDelete(it->second.uid);
-            if (it->second.icon) DestroyIcon(it->second.icon);
+        // Two misses in a row, and only on a pass we trust. Arrivals schedule a second pass 2.5 s
+        // later and removals one 3 s later, so a real unplug still clears within a few seconds.
+        const bool gone = !inGrace && !suspect && e.miss >= 2;
+        if (gone) {
+            if (e.added) TrayDelete(e.uid);
+            if (e.icon) DestroyIcon(e.icon);
             it = g_entries.erase(it);
         } else {
             ++it;
@@ -828,13 +844,25 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (wp) DestroyWindow(h);
             return 0;
         case WM_DEVICECHANGE:
-            if (wp == DBT_DEVICEARRIVAL || wp == DBT_DEVICEREMOVECOMPLETE) RefreshSoon(2500);
+            if (wp == DBT_DEVICEARRIVAL) {
+                // Two passes: one almost at once so a freshly plugged receiver shows up immediately,
+                // and a second one after the device has settled (a wireless link, and the battery
+                // channel behind it, need a moment to come up).
+                RefreshSoon(400);
+                SetTimer(h, TIMER_SETTLE, 2500, nullptr);
+            } else if (wp == DBT_DEVICEREMOVECOMPLETE) {
+                // Same two-pass idea: the first pass only notices the miss, the second one confirms it
+                // (OnResults needs two misses before an icon goes away).
+                RefreshSoon(800);
+                SetTimer(h, TIMER_SETTLE, 3000, nullptr);
+            }
             return TRUE;
         case WM_POWERBROADCAST:
             if (wp == PBT_APMRESUMEAUTOMATIC) RefreshSoon(5000);
             return TRUE;
         case WM_TIMER:
             if (wp == TIMER_DEBOUNCE) { KillTimer(h, TIMER_DEBOUNCE); SetEvent(g_refreshEvt); }
+            if (wp == TIMER_SETTLE) { KillTimer(h, TIMER_SETTLE); SetEvent(g_refreshEvt); }
             if (wp == TIMER_WIDGET) Reconcile();
             return 0;
         case WM_SETTINGCHANGE:
@@ -845,6 +873,7 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case WM_DESTROY:
             KillTimer(h, TIMER_WIDGET);
+            KillTimer(h, TIMER_SETTLE);
             widget::Destroy();
             SetEvent(g_stopEvt);
             if (g_worker) WaitForSingleObject(g_worker, 5000);

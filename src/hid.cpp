@@ -27,7 +27,15 @@ std::vector<HidColl> EnumHid() {
         auto det = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(buf.data());
         det->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
         if (!SetupDiGetDeviceInterfaceDetailW(di, &ifd, det, need, nullptr, nullptr)) continue;
-        HANDLE h = CreateFileW(det->DevicePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        // While Windows re-enumerates a bus (a receiver was just plugged in) the interface is briefly
+        // locked. Without FILE_SHARE_DELETE the open fails and the device silently drops out of the
+        // list for that pass — which is what made every tray icon blink out at once.
+        HANDLE h = INVALID_HANDLE_VALUE;
+        for (int attempt = 0; attempt < 2 && h == INVALID_HANDLE_VALUE; attempt++) {
+            if (attempt) Sleep(20);
+            h = CreateFileW(det->DevicePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                            OPEN_EXISTING, 0, nullptr);
+        }
         if (h == INVALID_HANDLE_VALUE) continue;
         HidColl c;
         c.path = det->DevicePath;
