@@ -41,7 +41,8 @@ jobs:
 
       - name: Build WirelessBattery.exe
         shell: msys2 {0}
-        run: make
+        # 89 translation units: build them in parallel instead of one after another.
+        run: make -j"$(nproc)"
 
       - name: Run unit tests
         shell: msys2 {0}
