@@ -10,6 +10,22 @@
 
 ---
 
+## 维护状态
+
+**随缘维护（best-effort）。**
+
+这是一个个人利用业余时间维护的汉化分支，我不承诺响应时间，也不保证每个需求都能实现：
+
+- **会做**：构建失败、崩溃、汉化或打包错误这类明显问题；以及合并能通过 CI 构建、写明协议来源、只读不写设备的外部 PR。
+- **多半做不了新设备**：我手上只有少数几台设备，没有硬件就无法验证协议，盲写只会给出错误的读数——这类 issue 通常只能停在"需要抓包"这一步。
+- **代码能力有限**：本仓库的不少改动是在 AI 辅助下完成的，所以我更依赖 CI 构建、静默安装/卸载和真实设备上的 `--list` 来验证，也因此不敢合并未经验证的改动。
+
+如果你想要更大的改动、更快的节奏，**欢迎直接 fork 自行维护**：GPLv3 明确允许修改与再分发，构建脚本（`build.bat`、`Makefile`）、CI、NSIS 打包脚本和各驱动的协议注释都在仓库里，`upstream-final` 标签还保留着上游最后一份完整历史，可以从任意起点开始。改好的成果也欢迎以 PR 形式提回来，我会尽量合。
+
+> 简言之：这是"能修就修"的项目，不是"有求必应"的项目；需要稳定支持的话，fork 是最实际的路。
+
+<sub>English: this is a best-effort, single-person branch maintained with heavy AI assistance. Bug fixes and well-tested PRs are welcome; new device support usually needs a hardware trace I don't have. Forking is explicitly encouraged.</sub>
+
 ## 与上游项目的关系
 
 | 项目 | 说明 |
