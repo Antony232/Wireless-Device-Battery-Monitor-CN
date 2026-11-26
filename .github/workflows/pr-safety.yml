@@ -12,6 +12,11 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened]
 
+# A new push to the pull request cancels the previous scan.
+concurrency:
+  group: pr-safety-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: read
@@ -26,8 +31,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" > "$RUNNER_TEMP/pr.diff"
+      # Advisory, not a gate: legitimate changes (a link to a documentation page, opening the
+      # browser on purpose) also match the tripwires, so findings are reported for the reviewer
+      # instead of failing the check.
       - name: Scan for red flags
-        run: bash scripts/pr-safety.sh "$RUNNER_TEMP/pr.diff"
+        continue-on-error: true
+        run: |
+          set +e
+          bash scripts/pr-safety.sh "$RUNNER_TEMP/pr.diff"
+          status=$?
+          if [ $status -ne 0 ]; then
+            {
+              echo "## 需要人工复核的命中项"
+              echo
+              echo "扫描器命中了下面这些模式（网络/启动程序/写文件等），但它们也可能是正当改动，"
+              echo "所以这一步不再阻断合并，请维护者看 diff 自行判断。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
       # AI tools add "Co-authored-by: Claude ..." to commit messages, which lists the AI as a repo
       # contributor once merged. Ask for those lines to be removed before merging.
       - name: Check commit messages for AI co-author credits

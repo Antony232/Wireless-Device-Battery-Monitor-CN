@@ -1,20 +1,29 @@
-name: build
+name: release
+
+# Slow path: build the installer, the portable zip and the bundled-source tarball, then publish them.
+# Runs only for version tags (or a manual dry run, which builds but never publishes).
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "Manual dry run: builds the packages, publishes nothing"
+        required: false
 
-# Read-only by default: builds of pull requests cannot change the repository or releases.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 jobs:
-  build:
+  package:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
-      # Actions are pinned to exact commits so a moved tag cannot swap in different code.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
@@ -40,6 +49,7 @@ jobs:
           $hash = (Get-FileHash $hc -Algorithm SHA256).Hash.ToLower()
           if ($hash -ne 'e371da043710ddb8fc70af77f2ccad1cd03f8c6f49ba423e08764ad7a94a3c40') { throw "HeadsetControl checksum mismatch: $hash" }
 
+      # NSIS writes to ..\dist relative to the script, so dist must exist (created above).
       - name: Build installer (NSIS)
         shell: msys2 {0}
         run: makensis installer/Wireless-Device-Battery-Monitor-CN.nsi
@@ -47,8 +57,7 @@ jobs:
       - name: Build portable zip
         shell: pwsh
         run: |
-          $version = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.0.0' }
-          New-Item -ItemType Directory -Force dist | Out-Null
+          $version = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.Substring(1) } else { 'adhoc' }
           Copy-Item LICENSE -Destination LICENSE.txt
           Compress-Archive -Force -Path WirelessBattery.exe,third_party/headsetcontrol/headsetcontrol.exe,LICENSE.txt,installer/README.txt,installer/THIRD_PARTY_NOTICES.txt -DestinationPath "dist/Wireless-Device-Battery-Monitor-CN-$version-portable.zip"
 
@@ -64,8 +73,8 @@ jobs:
           path: dist/*
 
   # Only this job can publish, and only for version tags.
-  release:
-    needs: build
+  publish:
+    needs: package
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -82,4 +91,4 @@ jobs:
           body: |
             本次发布由 CI 自动构建：安装包 `Wireless-Device-Battery-Monitor-CN-Setup-*.exe`、便携版 zip，以及随包分发的 HeadsetControl 4.3.0 对应源码。
 
-            原项目 **Wireless Battery** 由 krisgfx（[@krisgfx9](https://github.com/krisgfx9)）编写，本项目是其简体中文本地化分支，按 GNU GPLv3 发布；原作者与上游贡献者见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。上游赞助渠道请前往 [原仓库](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor)。
+            原项目 **Wireless Battery** 由 krisgfx（[@krisgfx9](https://github.com/krisgfx9)）编写，本项目是其简体中文本地化分支，按 GNU GPLv3 发布；原作者与上游贡献者见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。上游仓库已不可访问，历史保存在本仓库与 `upstream-final` 标签中。

@@ -83,7 +83,19 @@ existing code does (4-space indent, 120-column lines).
 
 Every pull request is scanned by the "PR safety check" for things this app should never do (network
 access, launching programs, reading keyboard/clipboard/screen, startup entries, binaries, build or
-release changes). A flag is not a rejection: just explain the flagged lines in the PR description.
+release changes). A flag is not a rejection: the step is advisory, it lists the matching lines in the
+check summary and asks the reviewer to read that part of the diff.
 
 Using AI tools is fine, but please remove `Co-authored-by` lines that credit them (for example
 `Co-authored-by: Claude ...`) from your commit messages. The check fails while they are present.
+
+## How the CI is split
+
+- **`ci.yml`** runs on every push to `main` and on pull requests: `make` + `make test` only, and it
+  uploads the built `WirelessBattery.exe`. Pushes that only touch `*.md`, `docs/**` or `LICENSE` are
+  skipped, so editing this file does not queue a build.
+- **`release.yml`** runs only for a `v*` tag: it adds the HeadsetControl binary, builds the NSIS
+  installer and the portable zip, and publishes the GitHub release. You can also start it by hand
+  (`workflow_dispatch`) to check packaging without publishing anything.
+- A new push to the same branch cancels the previous, still running job, so quick follow-up commits do
+  not queue up behind each other.
