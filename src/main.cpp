@@ -17,6 +17,7 @@
 #include "i18n.h"
 #include "labels.h"
 #include "report.h"
+#include "update.h"
 #include "widget.h"
 
 namespace {
@@ -24,6 +25,7 @@ namespace {
 constexpr UINT WM_TRAY = WM_APP + 1;
 constexpr UINT WM_RESULTS = WM_APP + 2;
 constexpr UINT WM_WIDGET_CLICK = WM_APP + 3;
+constexpr UINT WM_UPDATE = WM_APP + 4;  // one background update check finished
 constexpr UINT_PTR TIMER_DEBOUNCE = 1;
 constexpr UINT_PTR TIMER_WIDGET = 2;
 constexpr UINT_PTR TIMER_SETTLE = 3;   // second pass after a device has finished enumerating
@@ -32,7 +34,7 @@ constexpr int LOW_BATTERY = 15;
 constexpr UINT PLACEHOLDER_ID = 1;
 
 enum MenuId : UINT {
-    ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_REPORT,
+    ID_REFRESH = 100, ID_AUTOSTART, ID_HIDE_LAST_KNOWN, ID_WIDGET_BACKGROUND, ID_EXIT, ID_MODE_WIDGET, ID_MODE_TRAY, ID_REPORT, ID_CHECK_UPDATE,
     ID_BRAND_COLORS, ID_STACKED, ID_SINGLE_DEVICE,
     ID_LANG_AUTO = 400, ID_LANG_ADD, ID_LANG_FIRST,  // "Language": ID_LANG_FIRST + 0..63
     ID_MONITOR_ALL = 300, ID_MONITOR_MAIN, ID_MONITOR_FIRST,  // "Show the widget on": ID_MONITOR_FIRST + 0..31
@@ -642,6 +644,9 @@ void MoveEntry(const std::wstring& key, int dir) {
     UpdateWidget();
 }
 
+void OnCheckUpdate();
+void OnUpdateResult(int verdict, const std::wstring& latest);
+
 void ShowMenu() {
     ApplyMenuTheme(g_lightTaskbar);
     HMENU m = CreatePopupMenu();
@@ -719,6 +724,7 @@ void ShowMenu() {
     AppendMenuW(m, MF_STRING, ID_REFRESH, T(L"Refresh now"));
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), ID_AUTOSTART, T(L"Start with Windows"));
     AppendMenuW(m, MF_STRING, ID_REPORT, T(L"Request support for a device..."));
+    AppendMenuW(m, MF_STRING, ID_CHECK_UPDATE, T(L"Check for updates..."));
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, ID_EXIT, T(L"Exit"));
     POINT pt;
@@ -743,6 +749,7 @@ void ShowMenu() {
         case ID_MODE_WIDGET: SetMode(true); break;
         case ID_MODE_TRAY: SetMode(false); break;
         case ID_REPORT: report::Show(g_inst, g_hwnd); break;
+        case ID_CHECK_UPDATE: OnCheckUpdate(); break;
         case ID_EXIT: DestroyWindow(g_hwnd); break;
         default:
             if (cmd >= ID_LANG_FIRST && cmd < ID_LANG_FIRST + languages.size()) {
@@ -815,6 +822,31 @@ DWORD WINAPI Worker(LPVOID) {
 
 void RefreshSoon(UINT ms) { SetTimer(g_hwnd, TIMER_DEBOUNCE, ms, nullptr); }
 
+void OnCheckUpdate() {
+    if (update::CheckAsync(g_hwnd, WM_UPDATE)) return;
+    MessageBoxW(g_hwnd, T(L"Already checking for updates."), T(L"Check for updates"), MB_OK | MB_ICONINFORMATION);
+}
+
+// The check runs on a worker thread: wParam is 1/0/-1 and lParam the newest tag (never null).
+void OnUpdateResult(int verdict, const std::wstring& latest) {
+    const std::wstring current = update::CurrentVersion();
+    if (verdict < 0 || latest.empty() || current.empty()) {
+        MessageBoxW(g_hwnd, T(L"Couldn't check for updates. Check your network connection and try again."),
+                    T(L"Check for updates"), MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (verdict == 0) {
+        const std::wstring text = TF(L"You're using the newest version ({version}).", { { L"version", current } });
+        MessageBoxW(g_hwnd, text.c_str(), T(L"Check for updates"), MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    const std::wstring text = TF(L"A newer version is available: {version} (you have {current}). Open the download page?",
+                                 { { L"version", L"v" + latest }, { L"current", current } });
+    if (MessageBoxW(g_hwnd, text.c_str(), T(L"Check for updates"), MB_YESNO | MB_ICONQUESTION) == IDYES) {
+        update::OpenDownloadPage();
+    }
+}
+
 LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == g_taskbarCreatedMsg && msg != 0) {  // Explorer restarted
         widget::Destroy();
@@ -840,6 +872,12 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_WIDGET_CLICK:
             ShowMenu();
             return 0;
+        case WM_UPDATE: {
+            auto* tag = reinterpret_cast<std::wstring*>(lp);
+            OnUpdateResult(static_cast<int>(wp), tag ? *tag : std::wstring());
+            delete tag;
+            return 0;
+        }
         case WM_ENDSESSION:  // sign-out / shutdown / installer restart manager
             if (wp) DestroyWindow(h);
             return 0;
