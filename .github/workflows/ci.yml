@@ -7,15 +7,13 @@ name: ci
 on:
   push:
     branches: [main]
-    paths-ignore:
+    paths-ignore: &docs
       - "**.md"
       - "docs/**"
       - "LICENSE"
+      - ".AGENT"
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
+    paths-ignore: *docs
   workflow_dispatch:
 
 # A new push to the same branch cancels the previous, still running check.

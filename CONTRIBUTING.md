@@ -99,3 +99,6 @@ Using AI tools is fine, but please remove `Co-authored-by` lines that credit the
   (`workflow_dispatch`) to check packaging without publishing anything.
 - A new push to the same branch cancels the previous, still running job, so quick follow-up commits do
   not queue up behind each other.
+
+The repository root [`.AGENT`](.AGENT) documents how a larger change is split between the main
+agent and parallel subagents (phases, file ownership, verification gates).
