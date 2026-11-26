@@ -1,5 +1,18 @@
 # Contributing
 
+## 提交 PR 之前 / Before you open a PR
+
+1. 新建 PR 时 GitHub 会自动带出 [PR 模板](.github/pull_request_template.md)，请按四段填写：
+   **这个 PR 做了什么**（修 bug 必写复现方式与根因）、**协议来源**（含关键帧格式）、
+   **实机验证**（`--list` 原始输出，并与厂商软件对照）、**自查清单**。
+2. 本地跑过构建：`make`（或 `build.bat`）与 `make test`，并在模板最后一条打勾。
+3. 一个 PR 尽量只做一件事；顺手重排格式、改注释会让评审变慢。
+4. 允许使用 AI 辅助写作与编码，但请自己跑过构建、如实填写实机验证；提交信息里不要带
+   `Co-authored-by` 之类的 AI 署名。
+
+没有把握也欢迎直接 fork 自行维护，GPLv3 允许修改与再分发。
+
+
 ## Reporting whether a device works
 
 Most drivers were written from protocol documentation and could not be tested on every model.
