@@ -248,6 +248,18 @@ bool ReadServiceLevel(int&, int&) { return false; }
 
 }  // namespace
 
+// The service reports connection type, not charging: 1 = wired, 2 = 2.4 GHz dongle, 3 = Bluetooth
+// (see the file header). A wired pad is not necessarily charging, so the level is shown as-is.
+const wchar_t* ViaOf(int connectType)
+{
+    switch (connectType)
+    {
+        case 1: return L"USB cable";
+        case 3: return L"Bluetooth";
+        default: return L"2.4 GHz receiver";
+    }
+}
+
 void PollFlydigiVader4(PollContext& ctx)
 {
     if (ctx.IsClaimed(kVid, kPid))
@@ -260,11 +272,13 @@ void PollFlydigiVader4(PollContext& ctx)
     {
         DeviceStatus s;
         s.key = L"flydigi:" + Hex4(kPid);
+        // The pipe lists the whole FlyDigi family and carries no product name, so this is the family
+        // label rather than a per-model guess.
         s.name = L"FlyDigi Vader 4 Pro";
-        s.via = connectType == 1 ? L"USB cable" : L"2.4 GHz receiver";
+        s.via = ViaOf(connectType);
         s.kind = DeviceKind::Gamepad;
         s.percent = Clamp100(level * 100 / kPipeLevelMax);
-        s.charging = connectType == 1;
+        s.charging = false;
         s.vid = kVid;
         // Keep the raw step visible: the pad only knows 0..6, the percentage is derived.
         s.detail = std::to_wstring(level) + L"/" + std::to_wstring(kPipeLevelMax) + L" levels";
