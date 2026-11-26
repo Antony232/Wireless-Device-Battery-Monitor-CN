@@ -81,9 +81,10 @@ Two findings worth knowing before building anything on top of this:
   the wired and the wireless dump, so they do not encode supply or charging
   either.
 * **Bluetooth is not reachable through either path.** In Bluetooth mode the pad
-  becomes a BLE device (`D7D7:0041`, PnP node `BTHLE\DEV_A4C138901DC2`, MAC
-  matching `field6` of the wired dump) that exposes only a standard gamepad
-  collection (usage page 1) and no `0xFFA0`. The service does not enumerate it:
+  becomes a BLE device (`D7D7:0041`, a `BTHLE` node whose address ends with the
+  same four bytes as `field6` of the wired dump) that exposes only a standard
+  gamepad collection (usage page 1) and no `0xFFA0`. The service does not
+  enumerate it:
   `GetConnectedDevices` answers `08 81 20 10 01 2a 00`, i.e. `field5` with
   length 0. Windows also exposes no `DEVPKEY_Device_BatteryLevel` for the node.
   So `connectType == 3` is currently unreachable, and no level can be produced
