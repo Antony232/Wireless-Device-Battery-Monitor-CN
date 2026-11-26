@@ -49,11 +49,7 @@ void PollPmoWave75(PollContext& ctx)
          })) {
         HidDev d;
         if (!d.Open(*c))
-        {
-            // Another application (PMO Hub) may hold the collection; fall back to a read handle.
-            if (!d.OpenReadOnly(*c))
-                continue;
-        }
+            continue;  // PMO Hub (or another app) holds the collection; the query needs a writable handle
         d.Flush();
 
         std::vector<BYTE> reply;
