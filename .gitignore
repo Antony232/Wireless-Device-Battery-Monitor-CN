@@ -6,3 +6,5 @@ dist/
 third_party/
 .claude/
 CLAUDE.md
+# local development notes (not part of the published project)
+.AGENT

@@ -100,5 +100,5 @@ Using AI tools is fine, but please remove `Co-authored-by` lines that credit the
 - A new push to the same branch cancels the previous, still running job, so quick follow-up commits do
   not queue up behind each other.
 
-The repository root [`.AGENT`](.AGENT) documents how a larger change is split between the main
-agent and parallel subagents (phases, file ownership, verification gates).
+Larger changes are split between the maintainer and parallel agents; that workflow file is kept
+locally and is deliberately not part of the published repository.
