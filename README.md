@@ -1,4 +1,5 @@
 # 无线设备电量监视器 CN · Wireless-Device-Battery-Monitor-CN
+[![ci](https://github.com/fuyue521/Wireless-Device-Battery-Monitor-CN/actions/workflows/ci.yml/badge.svg)](https://github.com/fuyue521/Wireless-Device-Battery-Monitor-CN/actions/workflows/ci.yml)
 
 把无线鼠标、耳机、键盘和手柄的电量直接显示在 Windows 任务栏上，不装厂商软件、不要管理员权限、没有后台服务。
 
