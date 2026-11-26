@@ -97,11 +97,11 @@ GPLv3 的授权是永久且不可撤销的，上游仓库下线不影响本分�
 | 罗技 | HID++ 1.0/2.0 鼠标与键盘、G435 等耳机 |
 | 雷蛇 | 鼠标、键盘、耳机（含 Barracuda） |
 | 赛睿 / 海盗船 / HyperX / Astro / NZXT / 美商海盗船 | 鼠标、耳机、底座 |
-| 游戏手柄 | Xbox、PlayStation DualSense/DualShock、Switch Pro、Steam Controller、八位堂、飞智、北通、盖世小鸡 |
+| 游戏手柄 | Xbox、PlayStation DualSense/DualShock、Switch Pro、Steam Controller、八位堂、飞智（Vader 4 Pro 需切 DInput 模式）、北通、盖世小鸡 |
 | 真无线耳机 | Galaxy Buds、AirPods、Jabra、JBL、漫步者（部分）、水月雨 |
 | 蓝牙设备 | 任何 Windows 能报电量的蓝牙外设 |
 | 手机 | 通过 Phone Link 连接的手机电量 |
-| 国产键鼠 | ATK/VXE、MCHOSE、Rapoo、Kysona、Pulsar、G-Wolves、Endgame、VAXEE、WLmouse、Finalmouse、AULA、SONiX、Redragon/Areson、Delux/Ajazz、Attack Shark、达尔优、雷柏等 |
+| 国产键鼠 | ATK/VXE、MCHOSE、Rapoo、Kysona、Pulsar、G-Wolves、Endgame、VAXEE、WLmouse、Finalmouse、AULA、SONiX、Redragon/Areson、Delux/Ajazz、Attack Shark、达尔优、雷柏、PMOKEY WAVE 75（WOBKEY）等 |
 
 完整型号清单见源码 `src/drivers/` 下各驱动的注释（每个文件头部都标注了协议出处）。
 

@@ -71,6 +71,10 @@ int PollWgi(PollContext& ctx, int& thirdParty) {
         UINT16 vid = 0, pid = 0;
         raw->get_HardwareVendorId(&vid);
         raw->get_HardwareProductId(&pid);
+        // A vendor driver may already have reported this pad with a finer level than anything
+        // Windows can synthesise (the Flydigi service pipe yields 7 levels for a pad that XInput
+        // only describes as "wired"). In that case do not add a second, less accurate entry.
+        if (ctx.IsClaimed(vid, pid)) { Release(raw); continue; }
         IGameControllerBatteryInfo* info = nullptr;
         IBatteryReport* report = nullptr;
         if (WgiVendor(vid) && SUCCEEDED(raw->QueryInterface(__uuidof(IGameControllerBatteryInfo), (void**)&info)) && info &&

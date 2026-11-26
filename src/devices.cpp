@@ -48,6 +48,7 @@ std::vector<DeviceStatus> PollAllDevices() {
                         ctx.colls.end());
     PollGlorious(ctx);
     PollAula(ctx);       // before Kysona, which shares the 3554 vendor id and would probe it first
+    PollPmoWave75(ctx);  // 36B0:3002 PMOKEY WAVE 75 receiver, exact ids only
     PollDareu(ctx);
     PollDarmoshark(ctx);
     PollAtkSerial(ctx);  // before Kysona, which shares the ATK vendor id
@@ -106,6 +107,7 @@ std::vector<DeviceStatus> PollAllDevices() {
     PollSteamController(ctx);
     PollGameSir(ctx);
     PollFlydigi(ctx);
+    PollFlydigiVader4(ctx);  // 04B4:2412, DInput mode only; XInput mode has no vendor collection
     PollGameSirCyclone(ctx);
     Poll8BitDo(ctx);
     PollBeitong(ctx);  // before the XInput fallback, which only sees the receiver as wired

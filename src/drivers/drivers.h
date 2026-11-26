@@ -52,6 +52,7 @@ bool GWolvesIsCable(USHORT pid);
 // Vendor drivers (run in this order).
 void PollGlorious(PollContext& ctx);  // also Hitscan
 void PollAula(PollContext& ctx);      // AULA F75 / F87 Pro / F99 / HERO 68 Air keyboards (before Kysona)
+void PollPmoWave75(PollContext& ctx);  // PMOKEY WAVE 75 (WOBKEY) on the 36B0:3002 2.4 GHz receiver
 void PollDareu(PollContext& ctx);     // DAREU EM901X receiver / cable (split feature/input collections)
 void PollDarmoshark(PollContext& ctx); // Darmoshark M3 over its 2.4 GHz receiver
 void PollAtkSerial(PollContext& ctx); // ATK N9 Pro / N9 Ultra headsets (virtual COM port)
@@ -111,6 +112,7 @@ void PollSwitchPro(PollContext& ctx);  // Passive Switch Pro battery reports (05
 void PollSteamController(PollContext& ctx);
 void PollGameSir(PollContext& ctx);    // Nova Lite / Nova 2 / Nova 2 Lite
 void PollFlydigi(PollContext& ctx);    // Vader 5 Pro vendor battery channel
+void PollFlydigiVader4(PollContext& ctx);  // Vader 4 Pro / Apex 4 / Vader 3 Pro in DInput mode (04B4:2412)
 void PollGameSirCyclone(PollContext& ctx);  // Cyclone 2 (XInput mode)
 void Poll8BitDo(PollContext& ctx);     // Ultimate 2 Wireless in D-input mode (2DC8:6012)
 void PollBeitong(PollContext& ctx);    // BEITONG KP20 on its 2.4 GHz receiver (20BC:5128, XInput mode)
