@@ -63,8 +63,8 @@ a fixed "100 %" for it. After either source above succeeds, the driver claims
 ## Connection modes (measured on hardware)
 
 The same pad was dumped through the pipe in all three connection modes. The
-reply has the same shape in every mode; only `field3` and one entry of the
-component-version list change.
+reply has the same shape in every mode, and between the wired and the receiver
+dump the only field that differs is `field3` (`connectType`).
 
 | Connection | HID identity | `field3` | `field9` | `field11` | `field12` |
 |---|---|---|---|---|---|
@@ -76,10 +76,11 @@ Two findings worth knowing before building anything on top of this:
 
 * **There is no charging field.** `DeviceInfo` carries 13 fields (name,
   category, connectType, device code, MAC prefix, serial, isConnected, battery,
-  firmware, two constants, component versions) and none of them changes when
-  the cable is plugged in. `field11` and `field12` are `1118` and `654` in both
-  the wired and the wireless dump, so they do not encode supply or charging
-  either.
+  firmware, two constants, component versions). Plugging the cable changes
+  none of them except `connectType` (`field3`), so there is no separate supply
+  or charging flag. `field11` and `field12` are `1118` and `654` in both the
+  wired and the wireless dump, which rules them out as a charging indicator
+  too.
 * **Bluetooth is not reachable through either path.** In Bluetooth mode the pad
   becomes a BLE device (`D7D7:0041`, a `BTHLE` node whose address ends with the
   same four bytes as `field6` of the wired dump) that exposes only a standard
