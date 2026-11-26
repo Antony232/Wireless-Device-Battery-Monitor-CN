@@ -11,7 +11,7 @@ Unicode true
 !define APP_VERSION     "1.0.2"
 !define APP_EXE         "WirelessBattery.exe"
 !define APP_PUBLISHER   "Wireless-Device-Battery-Monitor-CN contributors"
-!define APP_URL         "https://github.com/krisgfx9/Wireless-Device-Battery-Monitor"
+!define APP_URL         "https://github.com/fuyue521/Wireless-Device-Battery-Monitor-CN"
 !define ROOT            ".."
 
 Name "${APP_NAME}"
