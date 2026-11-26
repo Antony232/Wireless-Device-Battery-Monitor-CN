@@ -63,24 +63,27 @@ a fixed "100 %" for it. After either source above succeeds, the driver claims
 ## Connection modes (measured on hardware)
 
 The same pad was dumped through the pipe in all three connection modes. The
-reply has the same shape in every mode, and between the wired and the receiver
-dump the only field that differs is `field3` (`connectType`).
+reply has the same shape in every mode. Between the wired and the receiver dump
+only two things differ: `field3` (`connectType`) and the component-version list
+(`field13`, `0.5.0.0` on the cable against `0.4.5.6` over the receiver); every
+other field is byte-identical.
 
-| Connection | HID identity | `field3` | `field9` | `field11` | `field12` |
-|---|---|---|---|---|---|
-| USB cable | `045E:028E` | 1 | 4 | 1118 | 654 |
-| 2.4 GHz receiver | `045E:028E` | 2 | 4 | 1118 | 654 |
-| Bluetooth | `D7D7:0041` (BLE) | *pipe returns an empty device list* | — | — | — |
+| Connection | HID identity | `field3` | `field9` | `field11` | `field12` | `field13` |
+|---|---|---|---|---|---|---|
+| USB cable | `045E:028E` | 1 | 4 | 1118 | 654 | `0.5.0.0` |
+| 2.4 GHz receiver | `045E:028E` | 2 | 4 | 1118 | 654 | `0.4.5.6` |
+| Bluetooth | `D7D7:0041` (BLE) | *pipe returns an empty device list* | — | — | — | — |
 
 Two findings worth knowing before building anything on top of this:
 
 * **There is no charging field.** `DeviceInfo` carries 13 fields (name,
   category, connectType, device code, MAC prefix, serial, isConnected, battery,
-  firmware, two constants, component versions). Plugging the cable changes
-  none of them except `connectType` (`field3`), so there is no separate supply
-  or charging flag. `field11` and `field12` are `1118` and `654` in both the
-  wired and the wireless dump, which rules them out as a charging indicator
-  too.
+  firmware, two constants, component versions). Switching between the cable
+  and the receiver changes `connectType` (`field3`) and the component-version
+  list (`field13`) and nothing else, so there is no separate supply or charging
+  flag; `field13` tracks per-mode component versions, not the battery.
+  `field11` and `field12` are `1118` and `654` in both dumps, which rules them
+  out as a charging indicator too.
 * **Bluetooth is not reachable through either path.** In Bluetooth mode the pad
   becomes a BLE device (`D7D7:0041`, a `BTHLE` node whose address ends with the
   same four bytes as `field6` of the wired dump) that exposes only a standard

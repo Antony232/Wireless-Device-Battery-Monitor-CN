@@ -255,6 +255,9 @@ const wchar_t* ViaOf(int connectType)
     switch (connectType)
     {
         case 1: return L"USB cable";
+        // 3 = Bluetooth: not reachable as of now - over BLE the pad exposes no vendor collection and
+        // the service returns an empty device list (see docs/flydigi_vader4.md). Kept for a future
+        // firmware that enables it.
         case 3: return L"Bluetooth";
         default: return L"2.4 GHz receiver";
     }
