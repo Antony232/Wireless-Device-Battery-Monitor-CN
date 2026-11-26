@@ -60,6 +60,52 @@ In XInput mode Windows reports `045E:028E` and the generic path can only invent
 a fixed "100 %" for it. After either source above succeeds, the driver claims
 `045E:028E` as well so `PollWgi` skips it and no second, wrong entry appears.
 
+## Connection modes (measured on hardware)
+
+The same pad was dumped through the pipe in all three connection modes. The
+reply has the same shape in every mode; only `field3` and one entry of the
+component-version list change.
+
+| Connection | HID identity | `field3` | `field9` | `field11` | `field12` |
+|---|---|---|---|---|---|
+| USB cable | `045E:028E` | 1 | 4 | 1118 | 654 |
+| 2.4 GHz receiver | `045E:028E` | 2 | 4 | 1118 | 654 |
+| Bluetooth | `D7D7:0041` (BLE) | *pipe returns an empty device list* | — | — | — |
+
+Two findings worth knowing before building anything on top of this:
+
+* **There is no charging field.** `DeviceInfo` carries 13 fields (name,
+  category, connectType, device code, MAC prefix, serial, isConnected, battery,
+  firmware, two constants, component versions) and none of them changes when
+  the cable is plugged in. `field11` and `field12` are `1118` and `654` in both
+  the wired and the wireless dump, so they do not encode supply or charging
+  either.
+* **Bluetooth is not reachable through either path.** In Bluetooth mode the pad
+  becomes a BLE device (`D7D7:0041`, a `BTHLE` node whose address ends with the
+  same four bytes as `field6` of the wired dump) that exposes only a standard
+  gamepad collection (usage page 1) and no `0xFFA0`. The service does not
+  enumerate it:
+  `GetConnectedDevices` answers `08 81 20 10 01 2a 00`, i.e. `field5` with
+  length 0. Windows also exposes no `DEVPKEY_Device_BatteryLevel` for the node.
+  So `connectType == 3` is currently unreachable, and no level can be produced
+  in Bluetooth mode.
+
+### Dumping the pipe reply yourself
+
+Useful when adding another FlyDigi model, or when a firmware update changes the
+reply:
+
+```
+write : b"FDG_PROTOCOL\n" + struct.pack("<i", 5) + bytes([0x08, 0x81, 0x20, 0x1A, 0x00])
+read  : "FDG_PROTOCOL\n" + int32le(len) + protobuf(IpcResult)
+                   (or "FDG_COMPRESSED" + gzip, or "FDG_CHUNK" + fragments)
+walk  : IpcResult.field5 -> repeated field1 (DeviceInfo)
+```
+
+Every field is either a varint or length-delimited, no packed repeated fields,
+so a ~40 line recursive reader is enough. Comparing the tree across the three
+connection modes is how the table above was produced.
+
 ## Where the protocol comes from
 
 * Space Station pipe: <https://github.com/wutong233/flydigi-battery>
@@ -82,7 +128,10 @@ derived.)
 
 * The pipe lists the whole FlyDigi family and carries no product name, so every
   device found through it is labelled "FlyDigi Vader 4 Pro".
-* Bluetooth connection shows the level the service reports, but charging state
-  is unknown on both paths.
+* Bluetooth mode is not covered by either path: the service does not enumerate
+  the pad there and the DInput collection only exists in DInput mode. The pad
+  can still be reported by the generic XInput path, but without a real level.
+* Charging state is unknown on both paths; the DInput collection only reports
+  it as a level value of `6`.
 * If neither the service nor the DInput collection is available, the pad falls
   back to the generic XInput path and shows a coarse level.
